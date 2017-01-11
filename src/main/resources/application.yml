@@ -1,0 +1,26 @@
+logging:
+  level:
+    org.springframework.web: DEBUG
+
+job:
+  cron:
+    expression: "*/5 * * * * *"
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+  #instance Id dynamically set to allow multiple instances
+  instance:
+    instanceId: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+  #uncomment to avoid registering this application in Eureka
+  #client:
+    #registerWithEureka: false
+
+elasticsearch:
+  host: localhost
+  port: 9200
+
+spring:
+  application:
+    name: microsvcpoller
