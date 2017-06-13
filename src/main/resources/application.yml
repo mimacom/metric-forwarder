@@ -30,3 +30,7 @@ metricpoller:
     name: microsvcmetrics
     #using something else than Y,M,D can result in unexpected behavior on the naming of indices
     dateFormat: yyyy-MM-dd
+  bulk:
+    cache:
+      autoflush: false
+      documents: 20

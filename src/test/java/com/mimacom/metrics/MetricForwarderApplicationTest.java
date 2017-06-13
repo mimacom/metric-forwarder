@@ -1,7 +1,10 @@
 package com.mimacom.metrics;
 
 import com.google.gson.Gson;
+import com.google.gson.internal.LinkedTreeMap;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHeaders;
+import org.apache.http.message.BasicHeader;
 import org.elasticsearch.client.ResponseListener;
 import org.elasticsearch.client.RestClient;
 import org.junit.Assert;
@@ -15,21 +18,25 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.cloud.client.DefaultServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
 
-import java.io.IOException;
+import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 
 @RunWith(SpringRunner.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @ActiveProfiles("test")
 public class MetricForwarderApplicationTest {
 
@@ -60,27 +67,39 @@ public class MetricForwarderApplicationTest {
 
         metricPollerService.pollInstances();
 
-        ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
-        //Verify each endpoint was called once per instance
-        Mockito.verify(esRestClient, Mockito.times(4)).performRequestAsync(Mockito.eq("POST"), Mockito.matches("/microsvcmetrics-([0-9]{2})/metrics"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
-        Mockito.verify(esRestClient, Mockito.times(4)).performRequestAsync(Mockito.eq("POST"), Mockito.matches("/microsvcmetrics-([0-9]{2})/health"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
+        ArgumentCaptor<HttpEntity> httpEntityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        ArgumentCaptor<BasicHeader> headerCaptor = ArgumentCaptor.forClass(BasicHeader.class);
 
-        List<HttpEntity> entities = entityCaptor.getAllValues();
-        //2 endpoints * 4 instances equals 8 entities
-        Assert.assertEquals(8, entities.size());
+        //Verify the bulk was just performed once, and to the proper formatted index
+        Mockito.verify(esRestClient,
+                Mockito.times(1)).performRequestAsync(Mockito.eq("POST"),
+                Mockito.matches("/microsvcmetrics-([0-9]{2})/_bulk"),
+                Mockito.eq(Collections.emptyMap()),
+                httpEntityCaptor.capture(),
+                Mockito.any(ResponseListener.class),
+                headerCaptor.capture());
+
+        List<HttpEntity> entities = httpEntityCaptor.getAllValues();
+
+        Assert.assertEquals(1, entities.size());
 
         HttpEntity httpEntity = entities.get(0);
-        Gson gson = new Gson();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> json = gson.fromJson(new InputStreamReader(httpEntity.getContent()), Map.class);
 
-        json.forEach((key, value) -> Assert.assertTrue(key.endsWith(".value")));
+        //get all the sent instructions in the bulk
+        List<String> instructions = getInstructions(httpEntity);
 
-        assertMetadata(json, "TEST-SERVICE1");
+        //2 instructions per operation * 2 endpoints * 4 instances equals 16 total instructions
+        assertEquals(instructions.size(), 16);
+
+        assertMetadataInstructions(instructions);
+
+        assertDocumentInstructions(instructions);
+
+        assertHeader(headerCaptor);
     }
 
     @Test
-    public void handleError() throws IOException {
+    public void handleError() throws Exception {
         String exceptionMsgKey = "exceptionMsg.value";
         String exceptionStacktraceKey = "exceptionStacktrace.value";
         String errorKey = "error.value";
@@ -93,7 +112,14 @@ public class MetricForwarderApplicationTest {
         metricPollerService.pollInstances();
 
         ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
-        Mockito.verify(esRestClient, Mockito.times(1)).performRequestAsync(Mockito.eq("POST"), Mockito.matches("/microsvcmetrics-([0-9]{2})/metrics"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
+        ArgumentCaptor<BasicHeader> headerCaptor = ArgumentCaptor.forClass(BasicHeader.class);
+
+        Mockito.verify(esRestClient, Mockito.times(1)).performRequestAsync(Mockito.eq("POST"),
+                Mockito.matches("/microsvcmetrics-([0-9]{2})/_bulk"),
+                Mockito.eq(Collections.emptyMap()),
+                entityCaptor.capture(),
+                Mockito.any(ResponseListener.class),
+                headerCaptor.capture());
 
         List<HttpEntity> entities = entityCaptor.getAllValues();
         Assert.assertEquals(1, entities.size());
@@ -101,18 +127,67 @@ public class MetricForwarderApplicationTest {
         HttpEntity httpEntity = entities.get(0);
         Gson gson = new Gson();
         @SuppressWarnings("unchecked")
-        Map<String, Object> json = gson.fromJson(new InputStreamReader(httpEntity.getContent()), Map.class);
-        json.forEach((key, value) -> Assert.assertTrue(key.endsWith(".value")));
 
+        //get all the sent instructions in the bulk
+        List<String> instructions = getInstructions(httpEntity);
+        //2 instructions per operation * 2 endpoints * 1 instances equals 4 total instructions
+        assertEquals(instructions.size(), 4);
+
+        assertDocumentInstructions(instructions);
+
+        assertMetadataInstructions(instructions);
+
+        Map<String, String> json = gson.fromJson(instructions.get(1), Map.class);
         Assert.assertEquals(json.get(errorKey), errorMessage);
         Assert.assertTrue(json.get(exceptionMsgKey) != null);
         Assert.assertTrue(json.get(exceptionStacktraceKey) != null);
 
-        assertMetadata(json, "NOT-ACCESSIBLE-TEST-SERVICE1");
+        json = gson.fromJson(instructions.get(3), Map.class);
+        Assert.assertEquals(json.get(errorKey), errorMessage);
+        Assert.assertTrue(json.get(exceptionMsgKey) != null);
+        Assert.assertTrue(json.get(exceptionStacktraceKey) != null);
 
+        assertHeader(headerCaptor);
     }
 
-    private static void assertMetadata(Map<String, Object> json, String metaValueServiceId) {
+    private static List<String> getInstructions(HttpEntity httpEntity) throws Exception {
+        return new BufferedReader(new InputStreamReader(httpEntity.getContent())).lines().collect(Collectors.toList());
+    }
+
+
+    private static void assertDocumentInstructions(List<String> instructions){
+        Gson gson = new Gson();
+        //get and assert that the document instructions are properly formed
+        for(int i = 1;i < instructions.size(); i=i+2) {
+            String instruction = instructions.get(i);
+            LinkedTreeMap<String, Object> document = (LinkedTreeMap<String, Object>) gson.fromJson(instruction, Map.class);
+            document.forEach((key, value) -> Assert.assertTrue(key.endsWith(".value")));
+            assertEnhacedMetadataForEndpoints(document);
+        }
+    }
+
+    private static void assertMetadataInstructions(List<String> instructions){
+        Gson gson = new Gson();
+        //get and assert the action_and_meta_data instructions are properly formed
+        for(int i = 0;i < instructions.size(); i=i+2){
+            String instruction = instructions.get(i);
+            LinkedTreeMap<String, Object> metadataInstruction = (LinkedTreeMap<String, Object>)gson.fromJson(instruction, Map.class);
+
+            Map<String, String> index = (Map<String, String> )metadataInstruction.get("index");
+            Assert.assertTrue(index != null);
+            Assert.assertTrue(index.get("_type").equals("health") || index.get("_type").equals("metrics"));
+        }
+    }
+
+    private static void assertHeader(ArgumentCaptor<BasicHeader> headerCaptor){
+        //get and assert the header (Such header is required as per ES docs)
+        Assert.assertTrue(headerCaptor.getAllValues().size() > 0);
+        BasicHeader header = headerCaptor.getAllValues().get(0);
+        Assert.assertEquals(header.getName(), HttpHeaders.CONTENT_TYPE);
+        Assert.assertEquals(header.getValue(), "application/x-ndjson");
+    }
+
+    private static void assertEnhacedMetadataForEndpoints(Map<String, Object> json) {
         String metaKeyTimestamp = "timestamp.value";
         String metaKeyHost = "host.value";
         String metaKeyPort = "port.value";
@@ -121,6 +196,6 @@ public class MetricForwarderApplicationTest {
         Assert.assertTrue(json.get(metaKeyTimestamp) != null);
         Assert.assertEquals(json.get(metaKeyHost), "localhost");
         Assert.assertTrue(json.get(metaKeyPort) != null);
-        Assert.assertEquals(json.get(metaKeyServiceId), metaValueServiceId);
+        Assert.assertTrue(json.get(metaKeyServiceId) != null);
     }
 }

@@ -11,3 +11,7 @@ metricpoller:
   index:
     name: microsvcmetrics
     dateFormat: dd
+  bulk:
+      cache:
+        autoflush: false
+        documents: 20

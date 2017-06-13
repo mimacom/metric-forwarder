@@ -21,7 +21,7 @@ public class MetricForwarderApplication {
     }
 
     @Bean(destroyMethod = "close")
-    public RestClient restClient(@Value("${elasticsearch.host}") String elasticsearchHost, @Value("${elasticsearch.port}") int port) {
+    public RestClient restClient(@Value("${elasticsearch.host:localhost}") String elasticsearchHost, @Value("${elasticsearch.port:9200}") int port) {
         return RestClient.builder(new HttpHost(elasticsearchHost, port)).build();
     }
 
