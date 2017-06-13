@@ -1,0 +1,13 @@
+logging:
+  level:
+    org.springframework.web: DEBUG
+
+eureka:
+  client:
+    enabled: false
+
+metricpoller:
+  endpoints: /health, /metrics
+  index:
+    name: microsvcmetrics
+    dateFormat: dd

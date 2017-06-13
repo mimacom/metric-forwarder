@@ -16,6 +16,8 @@ import org.springframework.util.Assert;
 
 import java.io.UnsupportedEncodingException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -33,13 +35,18 @@ public class ElasticsearchForwarder implements Forwarder {
     private static final String META_KEY_PORT = "port" + POSFIX;
     private static final String META_KEY_SVC_ID = "serviceId" + POSFIX;
 
+    private static String INDEX_NAME;
+    private static String INDEX_NAME_DATE_FORMAT;
+
 
     private final Gson gson = new Gson();
     private final RestClient esRestClient;
     private final Map<String, String> mappings;
 
     @Autowired
-    public ElasticsearchForwarder(RestClient esRestClient, @Value("${metricpoller.endpoints}") String[] metricsEndpoints) {
+    public ElasticsearchForwarder(RestClient esRestClient, @Value("${metricpoller.endpoints}") String[] metricsEndpoints,
+                                  @Value("${metricpoller.index.name}") String indexName,
+                                  @Value("${metricpoller.index.dateFormat}") String indexNameDateFormat) {
         this.esRestClient = esRestClient;
         this.mappings = new HashMap <>();
         Assert.notEmpty(metricsEndpoints, "At least 1 endpoint to poll is required");
@@ -47,6 +54,8 @@ public class ElasticsearchForwarder implements Forwarder {
         for (String endpoint : metricsEndpoints) {
             this.mappings.put(endpoint, buildMappingName(endpoint));
         }
+        INDEX_NAME = indexName;
+        INDEX_NAME_DATE_FORMAT = indexNameDateFormat;
     }
 
     public void submit(HashMap<String, Object> message, ServiceInstance instance, String endpoint) {
@@ -58,7 +67,7 @@ public class ElasticsearchForwarder implements Forwarder {
         } catch (UnsupportedEncodingException e) {
             throw new RuntimeException("Error converting string entity from Json String", e);
         }
-        esRestClient.performRequestAsync("POST", "/microsvcmetrics/" + this.mappings.get(endpoint), Collections.emptyMap(), entity, new ResponseListener() {
+        esRestClient.performRequestAsync("POST", getIndexName() + this.mappings.get(endpoint), Collections.emptyMap(), entity, new ResponseListener() {
             @Override
             public void onSuccess(Response response) {
                 LOG.debug("Successfully submitted metrics");
@@ -89,5 +98,14 @@ public class ElasticsearchForwarder implements Forwarder {
     private static String buildMappingName(String endpoint){
         String mapping = endpoint.startsWith("/") ? endpoint.replaceFirst("/","") : endpoint;
         return mapping.replace("/","-");
+    }
+
+    private static String getIndexName() {
+        return String.format("/%s-%s/", INDEX_NAME, getCurrentLocalDateTimeStamp());
+    }
+
+    private static String getCurrentLocalDateTimeStamp() {
+        return LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern(INDEX_NAME_DATE_FORMAT));
     }
 }

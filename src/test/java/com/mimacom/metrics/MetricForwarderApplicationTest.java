@@ -29,7 +29,7 @@ import static org.junit.Assert.assertTrue;
 
 
 @RunWith(SpringRunner.class)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"eureka.client.enabled=false", "metricpoller.endpoints=/health,/metrics"})
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 public class MetricForwarderApplicationTest {
 
@@ -62,8 +62,8 @@ public class MetricForwarderApplicationTest {
 
         ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
         //Verify each endpoint was called once per instance
-        Mockito.verify(esRestClient, Mockito.times(4)).performRequestAsync(Mockito.eq("POST"), Mockito.eq("/microsvcmetrics/metrics"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
-        Mockito.verify(esRestClient, Mockito.times(4)).performRequestAsync(Mockito.eq("POST"), Mockito.eq("/microsvcmetrics/health"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
+        Mockito.verify(esRestClient, Mockito.times(4)).performRequestAsync(Mockito.eq("POST"), Mockito.matches("/microsvcmetrics-([0-9]{2})/metrics"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
+        Mockito.verify(esRestClient, Mockito.times(4)).performRequestAsync(Mockito.eq("POST"), Mockito.matches("/microsvcmetrics-([0-9]{2})/health"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
 
         List<HttpEntity> entities = entityCaptor.getAllValues();
         //2 endpoints * 4 instances equals 8 entities
@@ -93,7 +93,7 @@ public class MetricForwarderApplicationTest {
         metricPollerService.pollInstances();
 
         ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
-        Mockito.verify(esRestClient, Mockito.times(1)).performRequestAsync(Mockito.eq("POST"), Mockito.eq("/microsvcmetrics/metrics"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
+        Mockito.verify(esRestClient, Mockito.times(1)).performRequestAsync(Mockito.eq("POST"), Mockito.matches("/microsvcmetrics-([0-9]{2})/metrics"), Mockito.eq(Collections.emptyMap()), entityCaptor.capture(), Mockito.any(ResponseListener.class));
 
         List<HttpEntity> entities = entityCaptor.getAllValues();
         Assert.assertEquals(1, entities.size());
