@@ -8,5 +8,5 @@ import java.util.HashMap;
  * @author Enrique Llerena Dominguez
  */
 public interface Forwarder {
-    void submit(HashMap<String, Object> message, ServiceInstance instance);
+    void submit(HashMap<String, Object> message, ServiceInstance instance, String endpoint);
 }

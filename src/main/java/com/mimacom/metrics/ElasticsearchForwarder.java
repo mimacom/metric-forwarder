@@ -9,14 +9,14 @@ import org.elasticsearch.client.RestClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 
 import java.io.UnsupportedEncodingException;
 import java.text.SimpleDateFormat;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
+import java.util.*;
 
 /**
  * @author Enrique Llerena Dominguez
@@ -36,13 +36,20 @@ public class ElasticsearchForwarder implements Forwarder {
 
     private final Gson gson = new Gson();
     private final RestClient esRestClient;
+    private final Map<String, String> mappings;
 
     @Autowired
-    public ElasticsearchForwarder(RestClient esRestClient) {
+    public ElasticsearchForwarder(RestClient esRestClient, @Value("${metricpoller.endpoints}") String[] metricsEndpoints) {
         this.esRestClient = esRestClient;
+        this.mappings = new HashMap <>();
+        Assert.notEmpty(metricsEndpoints, "At least 1 endpoint to poll is required");
+        //Build the mapping name based on the endpoint, and then relate them.
+        for (String endpoint : metricsEndpoints) {
+            this.mappings.put(endpoint, buildMappingName(endpoint));
+        }
     }
 
-    public void submit(HashMap<String, Object> message, ServiceInstance instance) {
+    public void submit(HashMap<String, Object> message, ServiceInstance instance, String endpoint) {
         String jsonContent = this.buildMessageFromMetrics(message, instance);
         HttpEntity entity;
 
@@ -51,8 +58,7 @@ public class ElasticsearchForwarder implements Forwarder {
         } catch (UnsupportedEncodingException e) {
             throw new RuntimeException("Error converting string entity from Json String", e);
         }
-
-        esRestClient.performRequestAsync("POST", "/microsvcmetrics/metrics", Collections.emptyMap(), entity, new ResponseListener() {
+        esRestClient.performRequestAsync("POST", "/microsvcmetrics/" + this.mappings.get(endpoint), Collections.emptyMap(), entity, new ResponseListener() {
             @Override
             public void onSuccess(Response response) {
                 LOG.debug("Successfully submitted metrics");
@@ -78,5 +84,10 @@ public class ElasticsearchForwarder implements Forwarder {
         jsonKeyValueMap.put(META_KEY_SVC_ID, instance.getServiceId());
 
         return this.gson.toJson(jsonKeyValueMap);
+    }
+
+    private static String buildMappingName(String endpoint){
+        String mapping = endpoint.startsWith("/") ? endpoint.replaceFirst("/","") : endpoint;
+        return mapping.replace("/","-");
     }
 }
