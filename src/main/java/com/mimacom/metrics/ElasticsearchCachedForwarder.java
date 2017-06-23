@@ -15,8 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.stereotype.Component;
-import org.springframework.util.Assert;
 
+import javax.annotation.PreDestroy;
 import java.io.UnsupportedEncodingException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -27,9 +27,9 @@ import java.util.*;
  * @author Enrique Llerena Dominguez
  */
 @Component
-public class ElasticsearchForwarder {
+public class ElasticsearchCachedForwarder {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchForwarder.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchCachedForwarder.class);
     private static final String DEFAULT_DATE_FORMAT = "yyyyMMdd'T'HHmmss.SSSZ";
 
     private static final String POSFIX = ".value";
@@ -51,11 +51,11 @@ public class ElasticsearchForwarder {
     private final boolean autoflush;
 
     @Autowired
-    public ElasticsearchForwarder(RestClient esRestClient, @Value("${metricpoller.endpoints:/admin/metrics}") String[] metricsEndpoints,
-                                  @Value("${metricpoller.index.name:microsvcmetrics}") String indexName,
-                                  @Value("${metricpoller.index.dateFormat:yyyy-MM-dd}") String indexNameDateFormat,
-                                  @Value("${metricpoller.bulk.cache.documents:10}") int documentsToCache,
-                                  @Value("${metricpoller.bulk.cache.autoflush:false}") Boolean autoflush) {
+    public ElasticsearchCachedForwarder(RestClient esRestClient, @Value("${metricpoller.endpoints:/admin/metrics}") String[] metricsEndpoints,
+                                        @Value("${metricpoller.index.name:microsvcmetrics}") String indexName,
+                                        @Value("${metricpoller.index.dateFormat:yyyy-MM-dd}") String indexNameDateFormat,
+                                        @Value("${metricpoller.bulk.cache.documents:10}") int documentsToCache,
+                                        @Value("${metricpoller.bulk.cache.autoflush:false}") Boolean autoflush) {
         this.esRestClient = esRestClient;
         this.mappings = new HashMap <>();
         //Build the mapping name based on the endpoint, and then relate them.
@@ -80,6 +80,7 @@ public class ElasticsearchForwarder {
         }
     }
 
+    @PreDestroy
     public void flush() {
         String jsonContent = buildBulkRequest(this.bulkInstructions);
         HttpEntity entity;
@@ -128,8 +129,7 @@ public class ElasticsearchForwarder {
     }
 
     private static String getCurrentLocalDateTimeStamp() {
-        return LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern(INDEX_NAME_DATE_FORMAT));
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern(INDEX_NAME_DATE_FORMAT));
     }
 
     private static String buildBulkRequest(List<String> bulkInstructions) {
