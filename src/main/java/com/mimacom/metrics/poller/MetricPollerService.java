@@ -1,5 +1,6 @@
-package com.mimacom.metrics;
+package com.mimacom.metrics.poller;
 
+import com.mimacom.metrics.forwarder.ElasticsearchCachedForwarder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;

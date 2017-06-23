@@ -1,4 +1,4 @@
-package com.mimacom.metrics;
+package com.mimacom.metrics.forwarder;
 
 import com.google.gson.Gson;
 import org.apache.http.HttpEntity;
