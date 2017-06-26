@@ -10,6 +10,7 @@ import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.List;
@@ -61,16 +62,24 @@ public class MetricPollerService {
 
             int count = 1;
             for (ServiceInstance instance : instances) {
-                for(String endpoint:this.metricsEndpoints) {
+                for(String endpoint : this.metricsEndpoints) {
                     LOG.debug("Processing instance #{0}, endpoint {1}", count++, endpoint);
                     //Get the metrics and delegate the forwarding of the message
                     HashMap<String, Object> result = this.getMetrics(instance, endpoint);
-                    this.forwarder.cache(result, instance, endpoint);
+                    try {
+                        this.forwarder.cache(result, instance, endpoint);
+                    } catch(IOException ioe){
+                        LOG.error(MessageFormat.format("Error fetching endpoint {0} for service instance: {1} with url {2}", endpoint, instance.getServiceId(), buildInstanceUrl(instance, endpoint)), ioe);
+                    }
                 }
             }
         }
         if(!this.autoflush){
-            this.forwarder.flush();
+            try {
+                this.forwarder.flush();
+            } catch(IOException ioe){
+                LOG.error("Error on flushing the cache", ioe);
+            }
         }
     }
 

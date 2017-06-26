@@ -14,7 +14,7 @@ import org.springframework.web.client.RestTemplate;
  * Created by _domine3 on 23.06.2017.
  */
 @SpringBootApplication
-@ComponentScan(value = {"com.mimacom.metrics.forwarder","com.mimacom.metrics.poller"})
+@ComponentScan(value = {"com.mimacom.metrics.forwarder", "com.mimacom.metrics.poller", "com.mimacom.metrics.elasticsearch.util"})
 public class MetricForwarderApplicationTestConfiguration {
     @Bean(destroyMethod = "close")
     public RestClient restClient(@Value("${elasticsearch.host:localhost}") String elasticsearchHost, @Value("${elasticsearch.port:9200}") int port) {

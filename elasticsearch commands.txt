@@ -1,32 +1,3 @@
-PUT microsvcmetrics
-{
-  "settings": {
-    "index": {
-      "number_of_shards": 1,
-      "number_of_replicas": 1
-    }
-  },
-  "mappings": {
-    "admin-metrics": {
-      "properties": {
-        "timestamp.value": {
-          "type": "date",
-          "format": "yyyyMMdd'T'HHmmss.SSSZ||epoch_millis"
-        }
-      }
-    },
-    "admin-health": {
-      "properties": {
-        "timestamp.value": {
-          "type": "date",
-          "format": "yyyyMMdd'T'HHmmss.SSSZ||epoch_millis"
-        }
-      }
-    }
-  }
-}
-
-
 PUT _template/template_microsvcmetrics
 {
   "template": "microsvcmetrics*",
@@ -37,23 +8,7 @@ PUT _template/template_microsvcmetrics
     }
   },
   "mappings": {
-    "admin-metrics": {
-      "properties": {
-        "timestamp.value": {
-          "type": "date",
-          "format": "yyyyMMdd'T'HHmmss.SSSZ||epoch_millis"
-        }
-      }
-    },
-    "admin-health": {
-      "properties": {
-        "timestamp.value": {
-          "type": "date",
-          "format": "yyyyMMdd'T'HHmmss.SSSZ||epoch_millis"
-        }
-      }
-    },
-    "admin-info": {
+    "timestamped-metric": {
       "properties": {
         "timestamp.value": {
           "type": "date",
