@@ -25,3 +25,8 @@ elasticsearch:
 
 metricpoller:
   endpoints: /admin/health, /admin/metrics, /admin/info
+  index:
+    #This has to match with the index template
+    name: microsvcmetrics
+    #using something else than Y,M,D can result in unexpected behavior on the naming of indices
+    dateFormat: yyyy-MM-dd
