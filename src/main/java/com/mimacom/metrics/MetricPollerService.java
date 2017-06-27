@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.stereotype.Component;
-import org.springframework.util.Assert;
 import org.springframework.web.client.RestTemplate;
 
 import java.text.MessageFormat;
@@ -30,18 +29,22 @@ public class MetricPollerService {
 
     private final DiscoveryClient discoveryClient;
     private final RestTemplate restTemplate;
-    private final Forwarder forwarder;
+    private final ElasticsearchCachedForwarder forwarder;
     private final String[] metricsEndpoints;
-
+    private final boolean autoflush;
 
 
     @Autowired
-    public MetricPollerService(@SuppressWarnings("SpringJavaAutowiringInspection") DiscoveryClient discoveryClient, RestTemplate restTemplate, Forwarder forwarder, @Value("${metricpoller.endpoints}") String[] metricsEndpoints) {
+    public MetricPollerService(@SuppressWarnings("SpringJavaAutowiringInspection") DiscoveryClient discoveryClient,
+                               RestTemplate restTemplate,
+                               ElasticsearchCachedForwarder forwarder,
+                               @Value("${metricpoller.endpoints:/admin/metrics}") String[] metricsEndpoints,
+                               @Value("${metricpoller.bulk.cache.autoflush:false}") Boolean autoflush) {
         this.discoveryClient = discoveryClient;
         this.restTemplate = restTemplate;
         this.forwarder = forwarder;
-        Assert.notEmpty(metricsEndpoints, "At least 1 endpoint to poll is required");
         this.metricsEndpoints = metricsEndpoints;
+        this.autoflush = autoflush;
     }
 
 
@@ -61,9 +64,12 @@ public class MetricPollerService {
                     LOG.debug("Processing instance #{0}, endpoint {1}", count++, endpoint);
                     //Get the metrics and delegate the forwarding of the message
                     HashMap<String, Object> result = this.getMetrics(instance, endpoint);
-                    this.forwarder.submit(result, instance, endpoint);
+                    this.forwarder.cache(result, instance, endpoint);
                 }
             }
+        }
+        if(!this.autoflush){
+            this.forwarder.flush();
         }
     }
 
